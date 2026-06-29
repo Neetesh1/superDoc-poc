@@ -4,9 +4,9 @@ export declare class ChatService {
     constructor(prisma: PrismaService);
     getMessages(policyId: string): Promise<({
         author: {
-            id: string;
             name: string;
             role: import(".prisma/client").$Enums.UserRole;
+            id: string;
         };
     } & {
         id: string;
@@ -18,9 +18,9 @@ export declare class ChatService {
     })[]>;
     postMessage(policyId: string, authorId: string, body: string, mentions?: string[]): Promise<{
         author: {
-            id: string;
             name: string;
             role: import(".prisma/client").$Enums.UserRole;
+            id: string;
         };
     } & {
         id: string;

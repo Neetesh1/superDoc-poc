@@ -55,9 +55,13 @@ export class PolicyService {
     return this.http.get(`${this.base}/${policyId}/export/pdf`, { params, responseType: 'blob' });
   }
 
-  compareVersions(policyId: string, v1Id: string, v2Id: string): Observable<Blob> {
+  compareVersions(policyId: string, v1Id: string, v2Id: string): Observable<{ htmlDiff: string; v1No: number; v2No: number }> {
     const params = new HttpParams().set('v1', v1Id).set('v2', v2Id);
-    return this.http.get(`${this.base}/${policyId}/compare`, { params, responseType: 'blob' });
+    return this.http.get<{ htmlDiff: string; v1No: number; v2No: number }>(`${this.base}/${policyId}/compare`, { params });
+  }
+
+  restoreVersion(policyId: string, versionId: string): Observable<PolicyVersion> {
+    return this.http.post<PolicyVersion>(`${this.base}/${policyId}/versions/${versionId}/restore`, {});
   }
 
   getAuditLog(policyId: string): Observable<AuditLogEntry[]> {

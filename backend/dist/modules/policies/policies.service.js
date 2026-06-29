@@ -15,7 +15,9 @@ const prisma_service_1 = require("../../config/prisma.service");
 const path_1 = require("path");
 const fs_1 = require("fs");
 const axios_1 = require("axios");
-const form_data_1 = require("form-data");
+const FormData = require("form-data");
+const mammoth = require("mammoth");
+const diff_1 = require("diff");
 let PoliciesService = class PoliciesService {
     constructor(prisma) {
         this.prisma = prisma;
@@ -170,7 +172,7 @@ let PoliciesService = class PoliciesService {
         let pdfBuffer;
         if (hasRealKey) {
             const apiUrl = `${process.env.SUPERDOC_API_URL ?? 'https://api.superdoc.dev/v1'}/convert?from=docx&to=pdf`;
-            const fd = new form_data_1.default();
+            const fd = new FormData();
             fd.append('file', (0, fs_1.createReadStream)(version.docxPath), { filename: 'policy.docx' });
             try {
                 const response = await axios_1.default.post(apiUrl, fd, {
@@ -186,7 +188,7 @@ let PoliciesService = class PoliciesService {
         }
         else {
             const gotenbergUrl = `${process.env.GOTENBERG_URL ?? 'http://localhost:3030'}/forms/libreoffice/convert`;
-            const fd = new form_data_1.default();
+            const fd = new FormData();
             fd.append('files', (0, fs_1.createReadStream)(version.docxPath), { filename: 'policy.docx' });
             try {
                 const response = await axios_1.default.post(gotenbergUrl, fd, {
@@ -214,13 +216,70 @@ let PoliciesService = class PoliciesService {
             this.prisma.policyVersion.findUnique({ where: { id: v1Id } }),
             this.prisma.policyVersion.findUnique({ where: { id: v2Id } }),
         ]);
-        if (!v1?.docxPath || !v2?.docxPath)
-            throw new common_1.NotFoundException('Version files not found');
-        const v2Buffer = (0, fs_1.readFileSync)(v2.docxPath);
+        if (!v1?.docxPath || !(0, fs_1.existsSync)(v1.docxPath))
+            throw new common_1.NotFoundException('Base version file not found');
+        if (!v2?.docxPath || !(0, fs_1.existsSync)(v2.docxPath))
+            throw new common_1.NotFoundException('Revised version file not found');
+        const [r1, r2] = await Promise.all([
+            mammoth.extractRawText({ path: v1.docxPath }),
+            mammoth.extractRawText({ path: v2.docxPath }),
+        ]);
+        const parts = (0, diff_1.diffWords)(r1.value, r2.value);
+        let htmlDiff = '';
+        for (const part of parts) {
+            const safe = part.value
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\r\n|\r|\n/g, '<br>');
+            if (part.removed) {
+                htmlDiff += `<del>${safe}</del>`;
+            }
+            else if (part.added) {
+                htmlDiff += `<ins>${safe}</ins>`;
+            }
+            else {
+                htmlDiff += safe;
+            }
+        }
         await this.prisma.auditLog.create({
             data: { policyId, userId, action: 'versions.compared', metadataJson: { v1Id, v2Id } },
         });
-        return v2Buffer;
+        return { htmlDiff, v1No: v1.versionNo, v2No: v2.versionNo };
+    }
+    async restoreVersion(policyId, versionId, userId) {
+        await this.findOne(policyId, userId);
+        const source = await this.prisma.policyVersion.findUnique({ where: { id: versionId } });
+        if (!source?.docxPath || !(0, fs_1.existsSync)(source.docxPath))
+            throw new common_1.NotFoundException('Version file not found');
+        const lastVersion = await this.prisma.policyVersion.findFirst({
+            where: { policyId },
+            orderBy: { versionNo: 'desc' },
+        });
+        const versionNo = (lastVersion?.versionNo ?? 0) + 1;
+        const uploadDir = process.env.UPLOAD_DIR ?? './uploads';
+        (0, fs_1.mkdirSync)(uploadDir, { recursive: true });
+        const newPath = (0, path_1.join)(uploadDir, `restore-${policyId}-v${versionNo}-${Date.now()}.docx`);
+        (0, fs_1.copyFileSync)(source.docxPath, newPath);
+        const version = await this.prisma.policyVersion.create({
+            data: {
+                policyId,
+                versionNo,
+                docxPath: newPath,
+                changeSummary: `Restored from V${source.versionNo}`,
+                createdBy: userId,
+            },
+        });
+        await this.prisma.policy.update({ where: { id: policyId }, data: { currentVersionId: version.id } });
+        await this.prisma.auditLog.create({
+            data: {
+                policyId,
+                userId,
+                action: 'version.restored',
+                metadataJson: { fromVersionId: versionId, fromVersionNo: source.versionNo, newVersionNo: versionNo },
+            },
+        });
+        return version;
     }
     async getAuditLog(policyId, userId) {
         await this.findOne(policyId, userId);

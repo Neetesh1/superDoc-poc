@@ -154,7 +154,21 @@ export declare class PoliciesController {
         changeSummary: string | null;
     }>;
     exportPdf(id: string, versionId: string, includeTrackedChanges: string, includeComments: string, req: any, res: Response): Promise<StreamableFile>;
-    compareVersions(id: string, v1: string, v2: string, req: any, res: Response): Promise<StreamableFile>;
+    compareVersions(id: string, v1: string, v2: string, req: any): Promise<{
+        htmlDiff: string;
+        v1No: number;
+        v2No: number;
+    }>;
+    restoreVersion(id: string, versionId: string, req: any): Promise<{
+        id: string;
+        createdBy: string;
+        createdAt: Date;
+        policyId: string;
+        versionNo: number;
+        docxPath: string | null;
+        yjsState: Buffer | null;
+        changeSummary: string | null;
+    }>;
     getAuditLog(id: string, req: any): Promise<({
         user: {
             id: string;

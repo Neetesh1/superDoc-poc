@@ -364,8 +364,11 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
   async downloadDocx(): Promise<void> {
     if (!this.superdoc) return;
     try {
-      const blob: Blob = await this.superdoc.export?.({ format: 'docx' });
-      this.triggerDownload(blob, 'policy.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      await this.superdoc.export?.({
+        exportType: ['docx'],
+        exportedName: 'SuperDoc',
+        triggerDownload: true,
+      });
     } catch {
       this.snackBar.open('Export failed', 'Dismiss', { duration: 3000 });
     }
@@ -395,10 +398,35 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
   }
 
   openCompareDialog(): void {
-    this.dialog.open(CompareDialogComponent, {
-      width: '480px',
+    const ref = this.dialog.open(CompareDialogComponent, {
+      width: '820px',
+      maxWidth: '95vw',
+      maxHeight: '90vh',
       data: { policyId: this.policyId },
     });
+    ref.afterClosed().subscribe((restored: PolicyVersion | undefined) => {
+      if (!restored) return;
+      this.versionId = restored.id;
+      this.versionCreated.emit(restored);
+      void this.reloadWithVersionId(restored.id);
+    });
+  }
+
+  private async reloadWithVersionId(versionId: string): Promise<void> {
+    const snack = this.snackBar.open('Loading restored version…', undefined, { duration: 30000 });
+    try {
+      const blob = await this.policyService.getDocx(this.policyId, versionId).toPromise();
+      const file = new File([blob!], 'policy.docx', {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+      this.superdoc?.destroy?.();
+      this.superdoc = null;
+      snack.dismiss();
+      await this.remountWithFile(file);
+    } catch {
+      snack.dismiss();
+      this.snackBar.open('Failed to load restored version', 'Dismiss', { duration: 4000 });
+    }
   }
 
   showVersionHistory(): void {
@@ -471,7 +499,7 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
     const summary = prompt('Snapshot summary (optional):') ?? '';
     const snack = this.snackBar.open('Saving document…', undefined, { duration: 30000 });
     try {
-      const blob: Blob = await this.superdoc.export?.({ format: 'docx' });
+      const blob = await this.exportDocxBlob();
       const file = new File([blob], `policy-${this.policyId}-${Date.now()}.docx`, {
         type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       });
@@ -504,7 +532,7 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
     this.autoSavePending = false;
     this.autoSaveState.set('saving');
     try {
-      const blob: Blob = await this.superdoc.export?.({ format: 'docx' });
+      const blob = await this.exportDocxBlob();
       const file = new File([blob], `policy-${this.policyId}-autosave.docx`, {
         type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       });
@@ -521,6 +549,14 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
       this.autoSaveInFlight = false;
       if (this.autoSavePending) void this.flushAutoSave();
     }
+  }
+
+  private async exportDocxBlob(): Promise<Blob> {
+    return this.superdoc.export?.({
+      exportType: ['docx'],
+      exportedName: 'SuperDoc',
+      triggerDownload: false,
+    });
   }
 
   autoSaveLabel(): string {

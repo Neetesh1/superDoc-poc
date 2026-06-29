@@ -60,10 +60,11 @@ let PoliciesController = class PoliciesController {
         res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="policy.pdf"' });
         return new common_1.StreamableFile(pdfBuffer);
     }
-    async compareVersions(id, v1, v2, req, res) {
-        const buffer = await this.policies.compareVersions(id, v1, v2, req.user.id);
-        res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'Content-Disposition': 'attachment; filename="comparison-redline.docx"' });
-        return new common_1.StreamableFile(buffer);
+    compareVersions(id, v1, v2, req) {
+        return this.policies.compareVersions(id, v1, v2, req.user.id);
+    }
+    restoreVersion(id, versionId, req) {
+        return this.policies.restoreVersion(id, versionId, req.user.id);
     }
     getAuditLog(id, req) {
         return this.policies.getAuditLog(id, req.user.id);
@@ -182,11 +183,19 @@ __decorate([
     __param(1, (0, common_1.Query)('v1')),
     __param(2, (0, common_1.Query)('v2')),
     __param(3, (0, common_1.Request)()),
-    __param(4, (0, common_1.Res)({ passthrough: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, Object, Object]),
-    __metadata("design:returntype", Promise)
+    __metadata("design:paramtypes", [String, String, String, Object]),
+    __metadata("design:returntype", void 0)
 ], PoliciesController.prototype, "compareVersions", null);
+__decorate([
+    (0, common_1.Post)(':id/versions/:versionId/restore'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Param)('versionId')),
+    __param(2, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", void 0)
+], PoliciesController.prototype, "restoreVersion", null);
 __decorate([
     (0, common_1.Get)(':id/audit-log'),
     __param(0, (0, common_1.Param)('id')),

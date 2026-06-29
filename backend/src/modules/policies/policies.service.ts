@@ -3,9 +3,11 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { join } from 'path';
-import { createReadStream, existsSync, copyFileSync, mkdirSync, readFileSync } from 'fs';
+import { createReadStream, existsSync, copyFileSync, mkdirSync } from 'fs';
 import axios from 'axios';
-import FormData from 'form-data';
+import * as FormData from 'form-data';
+import * as mammoth from 'mammoth';
+import { diffWords } from 'diff';
 
 @Injectable()
 export class PoliciesService {
@@ -218,20 +220,82 @@ export class PoliciesService {
     return pdfBuffer;
   }
 
-  async compareVersions(policyId: string, v1Id: string, v2Id: string, userId: string): Promise<Buffer> {
+  async compareVersions(
+    policyId: string,
+    v1Id: string,
+    v2Id: string,
+    userId: string,
+  ): Promise<{ htmlDiff: string; v1No: number; v2No: number }> {
     await this.findOne(policyId, userId);
     const [v1, v2] = await Promise.all([
       this.prisma.policyVersion.findUnique({ where: { id: v1Id } }),
       this.prisma.policyVersion.findUnique({ where: { id: v2Id } }),
     ]);
-    if (!v1?.docxPath || !v2?.docxPath) throw new NotFoundException('Version files not found');
+    if (!v1?.docxPath || !existsSync(v1.docxPath)) throw new NotFoundException('Base version file not found');
+    if (!v2?.docxPath || !existsSync(v2.docxPath)) throw new NotFoundException('Revised version file not found');
 
-    // Return v2 docx as placeholder — replace with SuperDoc diff API when available
-    const v2Buffer = readFileSync(v2.docxPath) as Buffer;
+    const [r1, r2] = await Promise.all([
+      mammoth.extractRawText({ path: v1.docxPath }),
+      mammoth.extractRawText({ path: v2.docxPath }),
+    ]);
+
+    const parts = diffWords(r1.value, r2.value);
+    let htmlDiff = '';
+    for (const part of parts) {
+      const safe = part.value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\r\n|\r|\n/g, '<br>');
+      if (part.removed) {
+        htmlDiff += `<del>${safe}</del>`;
+      } else if (part.added) {
+        htmlDiff += `<ins>${safe}</ins>`;
+      } else {
+        htmlDiff += safe;
+      }
+    }
+
     await this.prisma.auditLog.create({
       data: { policyId, userId, action: 'versions.compared', metadataJson: { v1Id, v2Id } },
     });
-    return v2Buffer; // Replace with actual diff API call when available
+    return { htmlDiff, v1No: v1.versionNo, v2No: v2.versionNo };
+  }
+
+  async restoreVersion(policyId: string, versionId: string, userId: string) {
+    await this.findOne(policyId, userId);
+    const source = await this.prisma.policyVersion.findUnique({ where: { id: versionId } });
+    if (!source?.docxPath || !existsSync(source.docxPath)) throw new NotFoundException('Version file not found');
+
+    const lastVersion = await this.prisma.policyVersion.findFirst({
+      where: { policyId },
+      orderBy: { versionNo: 'desc' },
+    });
+    const versionNo = (lastVersion?.versionNo ?? 0) + 1;
+    const uploadDir = process.env.UPLOAD_DIR ?? './uploads';
+    mkdirSync(uploadDir, { recursive: true });
+    const newPath = join(uploadDir, `restore-${policyId}-v${versionNo}-${Date.now()}.docx`);
+    copyFileSync(source.docxPath, newPath);
+
+    const version = await this.prisma.policyVersion.create({
+      data: {
+        policyId,
+        versionNo,
+        docxPath: newPath,
+        changeSummary: `Restored from V${source.versionNo}`,
+        createdBy: userId,
+      },
+    });
+    await this.prisma.policy.update({ where: { id: policyId }, data: { currentVersionId: version.id } });
+    await this.prisma.auditLog.create({
+      data: {
+        policyId,
+        userId,
+        action: 'version.restored',
+        metadataJson: { fromVersionId: versionId, fromVersionNo: source.versionNo, newVersionNo: versionNo },
+      },
+    });
+    return version;
   }
 
   async getAuditLog(policyId: string, userId: string) {

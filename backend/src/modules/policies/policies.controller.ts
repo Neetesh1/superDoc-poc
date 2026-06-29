@@ -89,16 +89,18 @@ export class PoliciesController {
   }
 
   @Get(':id/compare')
-  async compareVersions(
+  compareVersions(
     @Param('id') id: string,
     @Query('v1') v1: string,
     @Query('v2') v2: string,
     @Request() req: any,
-    @Res({ passthrough: true }) res: Response,
   ) {
-    const buffer = await this.policies.compareVersions(id, v1, v2, req.user.id);
-    res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'Content-Disposition': 'attachment; filename="comparison-redline.docx"' });
-    return new StreamableFile(buffer);
+    return this.policies.compareVersions(id, v1, v2, req.user.id);
+  }
+
+  @Post(':id/versions/:versionId/restore')
+  restoreVersion(@Param('id') id: string, @Param('versionId') versionId: string, @Request() req: any) {
+    return this.policies.restoreVersion(id, versionId, req.user.id);
   }
 
   @Get(':id/audit-log')

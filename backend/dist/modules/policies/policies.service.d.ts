@@ -160,7 +160,21 @@ export declare class PoliciesService {
         includeTrackedChanges: boolean;
         includeComments: boolean;
     }, userId: string): Promise<Buffer>;
-    compareVersions(policyId: string, v1Id: string, v2Id: string, userId: string): Promise<Buffer>;
+    compareVersions(policyId: string, v1Id: string, v2Id: string, userId: string): Promise<{
+        htmlDiff: string;
+        v1No: number;
+        v2No: number;
+    }>;
+    restoreVersion(policyId: string, versionId: string, userId: string): Promise<{
+        id: string;
+        createdBy: string;
+        createdAt: Date;
+        policyId: string;
+        versionNo: number;
+        docxPath: string | null;
+        yjsState: Buffer | null;
+        changeSummary: string | null;
+    }>;
     getAuditLog(policyId: string, userId: string): Promise<({
         user: {
             id: string;
