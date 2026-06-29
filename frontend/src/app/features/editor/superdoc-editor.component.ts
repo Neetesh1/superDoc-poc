@@ -298,6 +298,7 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
       // viewer is fully read-only; reviewer/linguistic_reviewer get suggestion (track-changes) mode
       const isReadOnly = this.auth.hasRole('viewer');
       const forceTrackChanges = this.auth.hasRole('reviewer', 'linguistic_reviewer', 'external_collaborator');
+      const documentMode = isReadOnly ? 'viewing' : (forceTrackChanges ? 'suggesting' : 'editing');
       const zone = this.zone;
       const self = this;
 
@@ -306,20 +307,24 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
           selector: '#superdoc-editor',
           toolbar: '#superdoc-toolbar',
           ...(file ? { document: file } : {}),
+          documentMode,
           licenseKey: environment.superdocLicenseKey,
-          collaboration: {
-            ydoc: self.ydoc,
-            provider: self.provider,
+          user: {
+            id: user.id,
+            name: user.name,
+            color: user.color,
+            email: user.email,
+            role: user.role,
           },
-          user: { id: user.id, name: user.name, color: user.color },
-          editable: !isReadOnly,
-          trackChanges: forceTrackChanges,
           onReady: () => {
+            // Upgrade to collaboration AFTER document is loaded so DOCX content is visible
+            try {
+              self.superdoc.upgradeToCollaboration?.({ ydoc: self.ydoc, provider: self.provider });
+            } catch { /* graceful fallback if API unavailable */ }
             zone.run(() => self.loading.set(false));
-            if (forceTrackChanges) self.enableTrackChanges(true);
           },
           onChange: () => {
-            if (!isReadOnly) {
+            if (documentMode !== 'viewing') {
               zone.run(() => self.scheduleAutoSave());
             }
           },
@@ -336,9 +341,12 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
   // --- Toolbar actions ---
 
   toggleTrackChanges(): void {
+    if (!this.superdoc) return;
     const next = !this.trackChangesEnabled();
     this.trackChangesEnabled.set(next);
-    this.enableTrackChanges(next);
+    try {
+      this.superdoc.setDocumentMode?.(next ? 'suggesting' : 'editing');
+    } catch { /* graceful fallback */ }
   }
 
   private enableTrackChanges(enabled: boolean): void {
@@ -484,6 +492,7 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
       const user = this.auth.currentUser!;
       const isReadOnly = this.auth.hasRole('viewer');
       const forceTrackChanges = this.auth.hasRole('reviewer', 'linguistic_reviewer', 'external_collaborator');
+      const documentMode = isReadOnly ? 'viewing' : (forceTrackChanges ? 'suggesting' : 'editing');
       const zone = this.zone;
       const self = this;
       zone.runOutsideAngular(() => {
@@ -491,17 +500,24 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
           selector: '#superdoc-editor',
           toolbar: '#superdoc-toolbar',
           document: file,
+          documentMode,
           licenseKey: environment.superdocLicenseKey,
-          collaboration: { ydoc: self.ydoc, provider: self.provider },
-          user: { id: user.id, name: user.name, color: user.color },
-          editable: !isReadOnly,
-          trackChanges: forceTrackChanges,
+          user: {
+            id: user.id,
+            name: user.name,
+            color: user.color,
+            email: user.email,
+            role: user.role,
+          },
           onReady: () => {
+            // Upgrade to collaboration AFTER document is loaded so DOCX content is visible
+            try {
+              self.superdoc.upgradeToCollaboration?.({ ydoc: self.ydoc, provider: self.provider });
+            } catch { /* graceful fallback if API unavailable */ }
             zone.run(() => self.loading.set(false));
-            if (forceTrackChanges) self.enableTrackChanges(true);
           },
           onChange: () => {
-            if (!isReadOnly) {
+            if (documentMode !== 'viewing') {
               zone.run(() => self.scheduleAutoSave());
             }
           },
