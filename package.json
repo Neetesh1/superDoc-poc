@@ -1,0 +1,13 @@
+{
+  "name": "policy-management-poc",
+  "private": true,
+  "scripts": {
+    "install:all": "npm --prefix frontend install && npm --prefix backend install && npm --prefix ws-server install",
+    "start:infra": "docker-compose up -d postgres redis",
+    "start:ws": "npm --prefix ws-server start",
+    "start:api": "npm --prefix backend run start:dev",
+    "start:frontend": "npm --prefix frontend start",
+    "migrate": "npm --prefix backend run prisma:migrate",
+    "seed": "npm --prefix backend run prisma:seed"
+  }
+}

@@ -1,0 +1,163 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      UserRole @default(viewer)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  policies    PolicyPermission[]
+  comments    Comment[]
+  chatMessages ChatMessage[]
+  auditLogs   AuditLog[]
+  versions    PolicyVersion[]
+  pdfExports  PdfExport[]
+}
+
+enum UserRole {
+  viewer
+  reviewer
+  editor
+  approver
+  linguistic_reviewer
+  external_collaborator
+}
+
+model Policy {
+  id               String        @id @default(cuid())
+  tenantId         String        @default("default")
+  title            String
+  scope            String?
+  jurisdiction     String?
+  status           PolicyStatus  @default(draft)
+  parentId         String?
+  currentVersionId String?
+  createdBy        String
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  versions    PolicyVersion[]
+  permissions PolicyPermission[]
+  comments    Comment[]
+  chatMessages ChatMessage[]
+  auditLogs   AuditLog[]
+  pdfExports  PdfExport[]
+  externalLinks ExternalLink[]
+}
+
+enum PolicyStatus {
+  draft
+  in_review
+  linguistic_review
+  pending_approval
+  published
+  archived
+}
+
+model PolicyVersion {
+  id            String   @id @default(cuid())
+  policyId      String
+  versionNo     Int
+  docxPath      String?
+  yjsState      Bytes?
+  changeSummary String?
+  createdBy     String
+  createdAt     DateTime @default(now())
+
+  policy     Policy      @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  creator    User        @relation(fields: [createdBy], references: [id])
+  pdfExports PdfExport[]
+
+  @@unique([policyId, versionNo])
+}
+
+model PolicyPermission {
+  id       String   @id @default(cuid())
+  policyId String
+  userId   String
+  role     UserRole
+
+  policy Policy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([policyId, userId])
+}
+
+model Comment {
+  id             String   @id @default(cuid())
+  policyId       String
+  versionId      String?
+  anchorJson     Json?
+  authorId       String
+  body           String
+  parentCommentId String?
+  resolved       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  policy  Policy  @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id])
+  parent  Comment? @relation("CommentReplies", fields: [parentCommentId], references: [id])
+  replies Comment[] @relation("CommentReplies")
+}
+
+model ChatMessage {
+  id           String   @id @default(cuid())
+  policyId     String
+  authorId     String
+  body         String
+  mentionsJson Json?
+  createdAt    DateTime @default(now())
+
+  policy Policy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id])
+}
+
+model PdfExport {
+  id          String   @id @default(cuid())
+  policyId    String
+  versionId   String
+  optionsJson Json?
+  pdfPath     String?
+  createdBy   String
+  createdAt   DateTime @default(now())
+
+  policy  Policy        @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  version PolicyVersion @relation(fields: [versionId], references: [id])
+  creator User          @relation(fields: [createdBy], references: [id])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  policyId     String
+  userId       String
+  action       String
+  metadataJson Json?
+  createdAt    DateTime @default(now())
+
+  policy Policy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+}
+
+model ExternalLink {
+  id        String   @id @default(cuid())
+  policyId  String
+  token     String   @unique @default(cuid())
+  expiresAt DateTime
+  role      UserRole @default(external_collaborator)
+  createdAt DateTime @default(now())
+
+  policy Policy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+}

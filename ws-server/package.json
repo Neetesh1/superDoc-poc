@@ -1,0 +1,20 @@
+{
+  "name": "policy-ws-server",
+  "version": "1.0.0",
+  "description": "y-websocket sync server for Policy Management POC",
+  "scripts": {
+    "start": "node server.js",
+    "start:dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "y-websocket": "^2.1.0",
+    "yjs": "^13.6.23",
+    "ws": "^8.18.0",
+    "dotenv": "^16.4.5",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13",
+    "@types/jsonwebtoken": "^9.0.7"
+  }
+}
