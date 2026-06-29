@@ -72,7 +72,7 @@ JWT_SECRET=change-me-in-production-use-a-long-random-secret
 WS_PORT=1234
 ```
 
-> The `JWT_SECRET` must match the value in `backend/.env`.
+> **Important:** `JWT_SECRET` must be identical in both `backend/.env` and `ws-server/.env`, otherwise browser WebSocket connections will be rejected with code 4003 and users will not see each other's presence.
 
 ### 5. Run database migrations
 
@@ -90,6 +90,7 @@ This creates the following demo users:
 
 | Email | Password | Role |
 |---|---|---|
+| `admin@lrn.com` | `Admin@123` | Approver (Admin) |
 | `policy.editor@lrn.local` | `Policy@12345` | Editor |
 | `policy.reviewer@lrn.local` | `Policy@12345` | Reviewer |
 | `policy.approver@lrn.local` | `Policy@12345` | Approver |

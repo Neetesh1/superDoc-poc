@@ -63,13 +63,22 @@ declare global {
           {{ policyStatus() | titlecase }}
         </mat-chip>
 
-        <mat-chip class="autosave-chip" [class.saving]="autoSaveState() === 'saving'" [class.error]="autoSaveState() === 'error'">
-          {{ autoSaveLabel() }}
-        </mat-chip>
+        @if (isReadOnlyMode()) {
+          <mat-chip class="readonly-chip">View only</mat-chip>
+        } @else if (isReviewerMode()) {
+          <mat-chip class="reviewer-chip">Reviewer — suggestions tracked</mat-chip>
+          <mat-chip class="autosave-chip" [class.saving]="autoSaveState() === 'saving'" [class.error]="autoSaveState() === 'error'">
+            {{ autoSaveLabel() }}
+          </mat-chip>
+        } @else {
+          <mat-chip class="autosave-chip" [class.saving]="autoSaveState() === 'saving'" [class.error]="autoSaveState() === 'error'">
+            {{ autoSaveLabel() }}
+          </mat-chip>
+        }
 
         <mat-divider vertical class="toolbar-divider" />
 
-        <!-- Track changes toggle (editor/reviewer/linguistic only) -->
+        <!-- Track changes toggle (editor/linguistic only) -->
         @if (canTrackChanges()) {
           <button mat-icon-button
             [color]="trackChangesEnabled() ? 'accent' : ''"
@@ -186,6 +195,8 @@ declare global {
     .autosave-chip { font-size: 11px; height: 24px; background: #e8f5e9 !important; color: #2e7d32 !important; }
     .autosave-chip.saving { background: #e3f2fd !important; color: #1565c0 !important; }
     .autosave-chip.error { background: #ffebee !important; color: #c62828 !important; }
+    .readonly-chip { font-size: 11px; height: 24px; background: #fff3e0 !important; color: #e65100 !important; }
+    .reviewer-chip { font-size: 11px; height: 24px; background: #e8f5e9 !important; color: #2e7d32 !important; }
   `],
 })
 export class SuperdocEditorComponent implements OnInit, OnDestroy {
@@ -238,26 +249,38 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
 
   private initCollaboration(): void {
     this.ydoc = new Y.Doc();
-    const roomName = this.versionId ? `policy-${this.policyId}-${this.versionId}` : `policy-${this.policyId}`;
+    // All users on the same policy share one room regardless of version
+    const roomName = `policy-${this.policyId}`;
 
     this.provider = new WebsocketProvider(environment.wsUrl, roomName, this.ydoc, {
       params: { token: this.auth.getToken() ?? '' },
     });
 
     const user = this.auth.currentUser!;
+    // Include `id` so Angular @for can track uniquely
     this.provider.awareness.setLocalStateField('user', {
+      id: user.id,
       name: user.name,
       color: user.color,
       role: user.role,
     });
 
-    this.provider.awareness.on('change', () => {
+    const refreshUsers = () => {
       const states = Array.from(this.provider!.awareness.getStates().values());
-      const users = states
-        .filter((s: any) => s?.user)
-        .map((s: any) => s.user as User);
+      const users: User[] = states
+        .filter((s: any) => s?.user?.id)
+        .map((s: any) => s.user as User)
+        // deduplicate by user id (same user in multiple tabs)
+        .filter((u, idx, arr) => arr.findIndex(x => x.id === u.id) === idx);
       this.zone.run(() => this.activeUsers.set(users));
-    });
+    };
+
+    // Fire on any awareness change (peer joins, leaves, updates)
+    this.provider.awareness.on('change', refreshUsers);
+    // Also fire once the WS connection syncs so the current user appears immediately
+    this.provider.on('sync', refreshUsers);
+    // Populate current user right away (no need to wait for an event)
+    refreshUsers();
   }
 
   private async loadAndMountEditor(): Promise<void> {
@@ -271,11 +294,10 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
 
       const { SuperDoc } = await import('@harbour-enterprises/superdoc');
 
-      const toolbarEl = this.sdToolbar.nativeElement;
       const user = this.auth.currentUser!;
-      const isReadOnly = !this.auth.canEdit() && !this.auth.canReview();
-      const isReviewer = this.auth.canReview() && !this.auth.canEdit();
-      // Capture zone + component refs for use inside runOutsideAngular callback
+      // viewer is fully read-only; reviewer/linguistic_reviewer get suggestion (track-changes) mode
+      const isReadOnly = this.auth.hasRole('viewer');
+      const forceTrackChanges = this.auth.hasRole('reviewer', 'linguistic_reviewer', 'external_collaborator');
       const zone = this.zone;
       const self = this;
 
@@ -291,15 +313,13 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
           },
           user: { id: user.id, name: user.name, color: user.color },
           editable: !isReadOnly,
-          trackChanges: isReviewer,
+          trackChanges: forceTrackChanges,
           onReady: () => {
             zone.run(() => self.loading.set(false));
-            if (isReviewer) {
-              self.enableTrackChanges(true);
-            }
+            if (forceTrackChanges) self.enableTrackChanges(true);
           },
           onChange: () => {
-            if (self.canEdit()) {
+            if (!isReadOnly) {
               zone.run(() => self.scheduleAutoSave());
             }
           },
@@ -462,8 +482,8 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
       const { SuperDoc } = await import('@harbour-enterprises/superdoc');
       const toolbarEl = this.sdToolbar.nativeElement;
       const user = this.auth.currentUser!;
-      const isReadOnly = !this.auth.canEdit() && !this.auth.canReview();
-      const isReviewer = this.auth.canReview() && !this.auth.canEdit();
+      const isReadOnly = this.auth.hasRole('viewer');
+      const forceTrackChanges = this.auth.hasRole('reviewer', 'linguistic_reviewer', 'external_collaborator');
       const zone = this.zone;
       const self = this;
       zone.runOutsideAngular(() => {
@@ -475,13 +495,13 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
           collaboration: { ydoc: self.ydoc, provider: self.provider },
           user: { id: user.id, name: user.name, color: user.color },
           editable: !isReadOnly,
-          trackChanges: isReviewer,
+          trackChanges: forceTrackChanges,
           onReady: () => {
             zone.run(() => self.loading.set(false));
-            if (isReviewer) self.enableTrackChanges(true);
+            if (forceTrackChanges) self.enableTrackChanges(true);
           },
           onChange: () => {
-            if (self.canEdit()) {
+            if (!isReadOnly) {
               zone.run(() => self.scheduleAutoSave());
             }
           },
@@ -574,8 +594,19 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
   }
 
   // --- Role helpers ---
+  // Track-changes toggle is only available for editors/approvers (reviewers always have it forced on)
   canTrackChanges(): boolean {
-    return this.auth.hasRole('reviewer', 'editor', 'linguistic_reviewer', 'external_collaborator');
+    return this.auth.hasRole('editor', 'approver');
+  }
+
+  // Only viewer is truly read-only
+  isReadOnlyMode(): boolean {
+    return this.auth.hasRole('viewer');
+  }
+
+  // Reviewer / linguistic_reviewer are in suggestion (forced track-changes) mode
+  isReviewerMode(): boolean {
+    return this.auth.hasRole('reviewer', 'linguistic_reviewer', 'external_collaborator');
   }
 
   canEdit(): boolean {
