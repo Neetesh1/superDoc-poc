@@ -17,6 +17,7 @@ import { MatDividerModule } from '@angular/material/divider';
 
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
+import { superdocFonts } from '@superdoc-dev/fonts';
 
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
@@ -45,7 +46,7 @@ declare global {
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="editor-shell">
+    <div class="editor-shell" [class.viewer-mode]="isReadOnlyMode()">
       <!-- Top Toolbar -->
       <mat-toolbar class="editor-toolbar" color="primary">
         <button mat-icon-button matTooltip="Back to policies" (click)="backRequested.emit()">
@@ -183,9 +184,14 @@ declare global {
     .spacer { flex: 1; }
     .toolbar-divider { height: 28px; margin: 0 8px; }
     .editor-content-row { display: flex; flex: 1; overflow: hidden; }
-    .editor-container { flex: 1; overflow: auto; position: relative; background: #f5f5f5; display: flex; flex-direction: column; }
-    .superdoc-toolbar-mount { flex-shrink: 0; }
+    .editor-container { flex: 1; overflow: auto; position: relative; background: #e8eaed; display: flex; flex-direction: column; }
+    /* Sticky SuperDoc toolbar — stays visible when document is scrolled */
+    .superdoc-toolbar-mount { flex-shrink: 0; position: sticky; top: 0; z-index: 20; background: #fff; border-bottom: 1px solid #e0e0e0; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    /* No padding on superdoc-mount — SuperDoc handles its own internal layout */
     .superdoc-mount { flex: 1; }
+    /* Viewer mode: hide the document-mode switcher from SuperDoc's toolbar */
+    .viewer-mode .superdoc-toolbar-mount ::ng-deep .sd-toolbar-item--doc-mode,
+    .viewer-mode .superdoc-toolbar-mount ::ng-deep .toolbar-dropdown-trigger:has(.sd-toolbar-item--doc-mode) { display: none !important; }
     .spinner-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255,255,255,.8); z-index: 10; gap: 16px; }
     .chat-sidebar { width: 320px; flex-shrink: 0; border-left: 1px solid #e0e0e0; }
     .status-chip { font-size: 11px; height: 24px; }
@@ -283,7 +289,95 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
     refreshUsers();
   }
 
+  /**
+   * Returns true when the current user is the "first" in the collaborative room
+   * and therefore must seed the shared Y.Doc by calling upgradeToCollaboration.
+   * Returns false when another connected user has already seeded the Y.Doc,
+   * meaning we should load directly from the shared Y.Doc via modules.collaboration.
+   *
+   * Detection strategy (runs concurrently with DOCX download — no UX delay):
+   *  1. Wait for the WebSocket provider to sync (up to timeoutMs).
+   *  2. After sync, allow 200 ms for awareness updates from other users to arrive.
+   *  3. "Subsequent user" only when BOTH:
+   *       a) another connected peer is present in the awareness map, AND
+   *       b) the shared Y.Doc already has real document content (not the default
+   *          Tiptap empty-document state of ≤2 empty paragraph nodes).
+   *  4. Timeout fallback: treat as first user (offline / slow server).
+   */
+  private shouldSeedFromDocx(timeoutMs: number): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      if (!this.ydoc || !this.provider) {
+        resolve(true);
+        return;
+      }
+
+      // Returns true when the Y.Doc contains real document content, not just the
+      // default Tiptap empty state (≤2 empty top-level paragraph nodes).
+      const hasRealContent = (): boolean => {
+        const fragment = this.ydoc!.getXmlFragment('supereditor');
+        if (fragment.length === 0) return false;
+        if (fragment.length <= 2) {
+          // Treat as empty if ALL top-level children are empty nodes
+          for (let i = 0; i < fragment.length; i++) {
+            if ((fragment.get(i) as any).length > 0) return true;
+          }
+          return false;
+        }
+        return true;
+      };
+
+      // Returns true when at least one OTHER client's awareness state is present
+      const otherUsersPresent = (): boolean => {
+        const myClientId = this.provider!.awareness.clientID;
+        for (const clientId of this.provider!.awareness.getStates().keys()) {
+          if (clientId !== myClientId) return true;
+        }
+        return false;
+      };
+
+      let resolved = false;
+      // Declared before the early-return path so `done` can safely reference it
+      // even when `onSync` is never assigned (already-synced case).
+      let onSync: ((isSynced: boolean) => void) | undefined;
+
+      const done = (seed: boolean) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          if (onSync) this.provider?.off('sync', onSync as any);
+          resolve(seed);
+        }
+      };
+
+      // Timeout fallback — WS not reachable → we are the first (offline / server down)
+      const timer = setTimeout(() => done(true), timeoutMs);
+
+      const decide = () => {
+        // Brief pause so awareness updates from already-connected peers can arrive
+        setTimeout(() => {
+          // Skip seeding ONLY when another peer is present AND Y.Doc already has
+          // real content — prevents the "empty stale state" deadlock where every
+          // peer sees others and no-one seeds the document.
+          const skip = otherUsersPresent() && hasRealContent();
+          done(!skip);
+        }, 200);
+      };
+
+      // Already synced (fast server) — decide with awareness buffer
+      if ((this.provider as any).synced) {
+        decide();
+        return;
+      }
+
+      onSync = (isSynced: boolean) => { if (isSynced) decide(); };
+      this.provider.on('sync', onSync as any);
+    });
+  }
+
   private async loadAndMountEditor(): Promise<void> {
+    // Start awareness detection concurrently so WS sync overlaps with DOCX download
+    const shouldSeedPromise = this.shouldSeedFromDocx(1500);
+
     try {
       // Fetch the DOCX blob only if a version exists; otherwise start blank
       let file: File | undefined;
@@ -294,6 +388,9 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
 
       const { SuperDoc } = await import('@harbour-enterprises/superdoc');
 
+      // Await the concurrent awareness check (usually already resolved by now)
+      const shouldSeed = await shouldSeedPromise;
+
       const user = this.auth.currentUser!;
       // viewer is fully read-only; reviewer/linguistic_reviewer get suggestion (track-changes) mode
       const isReadOnly = this.auth.hasRole('viewer');
@@ -303,32 +400,66 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
       const self = this;
 
       zone.runOutsideAngular(() => {
-        self.superdoc = new (SuperDoc as any)({
-          selector: '#superdoc-editor',
-          toolbar: '#superdoc-toolbar',
-          ...(file ? { document: file } : {}),
-          documentMode,
-          licenseKey: environment.superdocLicenseKey,
-          user: {
-            id: user.id,
-            name: user.name,
-            color: user.color,
-            email: user.email,
-            role: user.role,
-          },
-          onReady: () => {
-            // Upgrade to collaboration AFTER document is loaded so DOCX content is visible
-            try {
-              self.superdoc.upgradeToCollaboration?.({ ydoc: self.ydoc, provider: self.provider });
-            } catch { /* graceful fallback if API unavailable */ }
-            zone.run(() => self.loading.set(false));
-          },
-          onChange: () => {
-            if (documentMode !== 'viewing') {
-              zone.run(() => self.scheduleAutoSave());
-            }
-          },
-        } as any);
+        if (!shouldSeed) {
+          // Subsequent user: another peer is already in the room and has seeded the Y.Doc.
+          // Load SuperDoc bound directly to the shared Y.Doc so we render their state
+          // without re-applying the original DOCX (which would duplicate paragraphs).
+          self.superdoc = new (SuperDoc as any)({
+            selector: '#superdoc-editor',
+            toolbar: '#superdoc-toolbar',
+            modules: {
+              collaboration: {
+                ydoc: self.ydoc,
+                provider: self.provider,
+              },
+            },
+            documentMode,
+            fonts: superdocFonts,
+            licenseKey: environment.superdocLicenseKey,
+            user: {
+              id: user.id,
+              name: user.name,
+              color: user.color,
+              email: user.email,
+              role: user.role,
+            },
+            onReady: () => zone.run(() => self.loading.set(false)),
+            onChange: () => {
+              if (documentMode !== 'viewing') {
+                zone.run(() => self.scheduleAutoSave());
+              }
+            },
+          } as any);
+        } else {
+          // First user (empty room): load DOCX and seed the shared Y.Doc.
+          self.superdoc = new (SuperDoc as any)({
+            selector: '#superdoc-editor',
+            toolbar: '#superdoc-toolbar',
+            ...(file ? { document: file } : {}),
+            documentMode,
+            fonts: superdocFonts,
+            licenseKey: environment.superdocLicenseKey,
+            user: {
+              id: user.id,
+              name: user.name,
+              color: user.color,
+              email: user.email,
+              role: user.role,
+            },
+            onReady: () => {
+              // Seed Y.Doc from DOCX now that the document is fully parsed
+              try {
+                self.superdoc.upgradeToCollaboration?.({ ydoc: self.ydoc, provider: self.provider });
+              } catch { /* graceful fallback if API unavailable */ }
+              zone.run(() => self.loading.set(false));
+            },
+            onChange: () => {
+              if (documentMode !== 'viewing') {
+                zone.run(() => self.scheduleAutoSave());
+              }
+            },
+          } as any);
+        }
       });
     } catch (err) {
       this.zone.run(() => {
@@ -501,6 +632,7 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
           toolbar: '#superdoc-toolbar',
           document: file,
           documentMode,
+          fonts: superdocFonts,
           licenseKey: environment.superdocLicenseKey,
           user: {
             id: user.id,
