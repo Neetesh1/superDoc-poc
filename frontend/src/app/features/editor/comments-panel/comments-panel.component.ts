@@ -107,7 +107,10 @@ export class CommentsPanelComponent implements OnInit, OnDestroy {
     const body = this.commentCtrl.value?.trim();
     if (!body) return;
     this.policyService.createComment(this.policyId, { body, versionId: this.versionId }).subscribe(comment => {
-      this.comments.update(items => [...items, { ...comment, replies: comment.replies ?? [] }]);
+      this.comments.update(items => {
+        if (items.some(item => item.id === comment.id)) return items;
+        return [...items, { ...comment, replies: comment.replies ?? [] }];
+      });
       this.commentCtrl.reset();
     });
   }

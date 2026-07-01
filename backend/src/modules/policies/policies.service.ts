@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, ForbiddenException, InternalServerErrorException,
 } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { createReadStream, existsSync, copyFileSync, mkdirSync } from 'fs';
 import axios from 'axios';
 import * as FormData from 'form-data';
@@ -12,6 +12,8 @@ import { diffWords } from 'diff';
 @Injectable()
 export class PoliciesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private readonly uploadRoot = resolve(process.env.UPLOAD_DIR ?? './uploads');
 
   async list(userId: string) {
     return this.prisma.policy.findMany({
@@ -357,8 +359,17 @@ export class PoliciesService {
     return comment;
   }
 
-  private async buildChangeSummary(previousPath?: string | null, nextPath?: string | null): Promise<Record<string, unknown>> {
-    if (!previousPath || !nextPath || !existsSync(previousPath) || !existsSync(nextPath)) {
+  private async buildChangeSummary(previousPath?: string | null, nextPath?: string | null): Promise<{
+    changedWords?: { added: number; removed: number };
+  }> {
+    if (
+      !previousPath
+      || !nextPath
+      || !this.isAllowedUploadPath(previousPath)
+      || !this.isAllowedUploadPath(nextPath)
+      || !existsSync(previousPath)
+      || !existsSync(nextPath)
+    ) {
       return {};
     }
     try {
@@ -378,5 +389,10 @@ export class PoliciesService {
     } catch {
       return {};
     }
+  }
+
+  private isAllowedUploadPath(filePath: string): boolean {
+    const absolutePath = resolve(filePath);
+    return absolutePath === this.uploadRoot || absolutePath.startsWith(`${this.uploadRoot}/`);
   }
 }
