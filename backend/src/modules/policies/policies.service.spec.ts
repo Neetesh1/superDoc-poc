@@ -20,6 +20,10 @@ describe('PoliciesService', () => {
       auditLog: {
         create: jest.fn(),
       },
+      comment: {
+        findMany: jest.fn(),
+        create: jest.fn(),
+      },
     } as unknown as jest.Mocked<PrismaService>;
 
     service = new PoliciesService(prisma);
@@ -125,6 +129,52 @@ describe('PoliciesService', () => {
           userId,
           action: 'version.autosaved',
           metadataJson: { versionId, file: file.originalname },
+        },
+      });
+    });
+  });
+
+  describe('comments', () => {
+    it('lists policy comments for accessible policy', async () => {
+      const policyId = 'policy-1';
+      const userId = 'user-1';
+      const comments = [{ id: 'comment-1', policyId, body: 'Needs review' }];
+
+      (prisma.policy.findUnique as jest.Mock).mockResolvedValue({
+        id: policyId,
+        permissions: [{ userId }],
+      });
+      (prisma.comment.findMany as jest.Mock).mockResolvedValue(comments);
+
+      await expect(service.listComments(policyId, userId)).resolves.toEqual(comments);
+      expect(prisma.comment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { policyId, parentCommentId: null },
+      }));
+    });
+
+    it('creates a comment and writes audit log', async () => {
+      const policyId = 'policy-1';
+      const userId = 'user-1';
+      const payload = { body: 'Please update section 2', versionId: 'version-1' };
+      const created = { id: 'comment-1', ...payload, policyId, authorId: userId };
+
+      (prisma.policy.findUnique as jest.Mock).mockResolvedValue({
+        id: policyId,
+        permissions: [{ userId }],
+      });
+      (prisma.comment.create as jest.Mock).mockResolvedValue(created);
+      (prisma.auditLog.create as jest.Mock).mockResolvedValue({ id: 'audit-1' });
+
+      await expect(service.createComment(policyId, userId, payload)).resolves.toEqual(created);
+      expect(prisma.comment.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ policyId, authorId: userId, body: payload.body }),
+      }));
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: {
+          policyId,
+          userId,
+          action: 'comment.created',
+          metadataJson: { commentId: created.id, versionId: payload.versionId, parentCommentId: null },
         },
       });
     });

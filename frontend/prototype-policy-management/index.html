@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Policy Editor Prototype</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
+    body { background: #f5f5f5; }
+    .toolbar { height: 64px; background: #1565c0; color: #fff; display: flex; align-items: center; gap: 12px; padding: 0 16px; }
+    .title { font-weight: 600; }
+    .spacer { flex: 1; }
+    .chip { background: rgba(255,255,255,0.2); border-radius: 12px; padding: 4px 10px; font-size: 12px; }
+    .layout { display: grid; grid-template-columns: 1fr 320px; height: calc(100vh - 64px); }
+    .editor { background: #fff; margin: 16px; border-radius: 8px; border: 1px solid #e0e0e0; }
+    .comments { margin: 16px 16px 16px 0; background: #fafafa; border: 1px solid #e0e0e0; border-radius: 8px; display: flex; flex-direction: column; }
+    .comments h2 { font-size: 16px; padding: 12px 14px; border-bottom: 1px solid #e0e0e0; }
+    .comment-list { flex: 1; padding: 12px; }
+    .comment-item { background: #fff; border: 1px solid #ececec; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+    .comment-input { border-top: 1px solid #e0e0e0; padding: 12px; }
+    textarea { width: 100%; height: 80px; border: 1px solid #ccc; border-radius: 6px; padding: 8px; resize: vertical; }
+  </style>
+</head>
+<body>
+  <header class="toolbar">
+    <span class="title">Policy Editor</span>
+    <span class="spacer"></span>
+    <span class="chip">Track Changes</span>
+    <span class="chip">Collaboration</span>
+    <span class="chip">DOCX</span>
+  </header>
+  <main class="layout">
+    <section class="editor"></section>
+    <aside class="comments">
+      <h2>Comments</h2>
+      <div class="comment-list">
+        <div class="comment-item">Comments will be shown here.</div>
+      </div>
+      <div class="comment-input">
+        <textarea placeholder="Write a comment..."></textarea>
+      </div>
+    </aside>
+  </main>
+</body>
+</html>

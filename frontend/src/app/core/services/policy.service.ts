@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Policy, PolicyVersion, PdfExportOptions, AuditLogEntry } from '../models/policy.models';
+import { Policy, PolicyVersion, PdfExportOptions, AuditLogEntry, Comment } from '../models/policy.models';
 import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -66,6 +66,17 @@ export class PolicyService {
 
   getAuditLog(policyId: string): Observable<AuditLogEntry[]> {
     return this.http.get<AuditLogEntry[]>(`${this.base}/${policyId}/audit-log`);
+  }
+
+  listComments(policyId: string): Observable<Comment[]> {
+    return this.http.get<Comment[]>(`${this.base}/${policyId}/comments`);
+  }
+
+  createComment(
+    policyId: string,
+    payload: { body: string; versionId?: string; parentCommentId?: string; anchorJson?: unknown },
+  ): Observable<Comment> {
+    return this.http.post<Comment>(`${this.base}/${policyId}/comments`, payload);
   }
 
   snapshotVersion(policyId: string, summary: string): Observable<PolicyVersion> {

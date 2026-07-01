@@ -103,6 +103,7 @@ export class PoliciesService {
     if (targetVersionId) {
       const existing = await this.prisma.policyVersion.findUnique({ where: { id: targetVersionId } });
       if (!existing || existing.policyId !== policyId) throw new NotFoundException('Policy version not found');
+      const changeSummary = await this.buildChangeSummary(existing.docxPath, file.path);
 
       const version = await this.prisma.policyVersion.update({
         where: { id: targetVersionId },
@@ -110,7 +111,12 @@ export class PoliciesService {
       });
       await this.prisma.policy.update({ where: { id: policyId }, data: { currentVersionId: version.id } });
       await this.prisma.auditLog.create({
-        data: { policyId, userId, action: 'version.autosaved', metadataJson: { versionId: version.id, file: file.originalname } },
+        data: {
+          policyId,
+          userId,
+          action: 'version.autosaved',
+          metadataJson: { versionId: version.id, file: file.originalname, ...changeSummary },
+        },
       });
       return version;
     }
@@ -306,5 +312,71 @@ export class PoliciesService {
       orderBy: { createdAt: 'desc' },
       take: 500,
     });
+  }
+
+  async listComments(policyId: string, userId: string) {
+    await this.findOne(policyId, userId);
+    return this.prisma.comment.findMany({
+      where: { policyId, parentCommentId: null },
+      include: {
+        author: { select: { id: true, name: true, role: true } },
+        replies: {
+          include: { author: { select: { id: true, name: true, role: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async createComment(
+    policyId: string,
+    userId: string,
+    data: { body: string; versionId?: string; parentCommentId?: string; anchorJson?: unknown },
+  ) {
+    await this.findOne(policyId, userId);
+    const comment = await this.prisma.comment.create({
+      data: {
+        policyId,
+        versionId: data.versionId,
+        parentCommentId: data.parentCommentId,
+        anchorJson: data.anchorJson as any,
+        authorId: userId,
+        body: data.body,
+      },
+      include: { author: { select: { id: true, name: true, role: true } } },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        policyId,
+        userId,
+        action: 'comment.created',
+        metadataJson: { commentId: comment.id, versionId: data.versionId ?? null, parentCommentId: data.parentCommentId ?? null },
+      },
+    });
+    return comment;
+  }
+
+  private async buildChangeSummary(previousPath?: string | null, nextPath?: string | null): Promise<Record<string, unknown>> {
+    if (!previousPath || !nextPath || !existsSync(previousPath) || !existsSync(nextPath)) {
+      return {};
+    }
+    try {
+      const [previous, next] = await Promise.all([
+        mammoth.extractRawText({ path: previousPath }),
+        mammoth.extractRawText({ path: nextPath }),
+      ]);
+      const parts = diffWords(previous.value, next.value);
+      let addedWords = 0;
+      let removedWords = 0;
+      for (const part of parts) {
+        const words = (part.value.match(/\S+/g) ?? []).length;
+        if (part.added) addedWords += words;
+        if (part.removed) removedWords += words;
+      }
+      return { changedWords: { added: addedWords, removed: removedWords } };
+    } catch {
+      return {};
+    }
   }
 }

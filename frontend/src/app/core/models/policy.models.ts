@@ -46,7 +46,8 @@ export interface PolicyPermission {
 
 export interface Comment {
   id: string;
-  versionId: string;
+  policyId: string;
+  versionId?: string;
   anchorJson?: unknown;
   authorId: string;
   author?: User;

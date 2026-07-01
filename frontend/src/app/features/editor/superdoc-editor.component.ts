@@ -9,7 +9,6 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatChipsModule } from '@angular/material/chips';
-import { MatBadgeModule } from '@angular/material/badge';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
@@ -22,10 +21,10 @@ import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
 import { PolicyService } from '../../core/services/policy.service';
 import { User, PolicyVersion, PdfExportOptions } from '../../core/models/policy.models';
-import { ChatPanelComponent } from './chat-panel/chat-panel.component';
 import { PresenceBarComponent } from './presence-bar/presence-bar.component';
 import { ExportDialogComponent } from './export-dialog/export-dialog.component';
 import { CompareDialogComponent } from './compare-dialog/compare-dialog.component';
+import { CommentsPanelComponent } from './comments-panel/comments-panel.component';
 
 declare global {
   interface Window {
@@ -39,9 +38,9 @@ declare global {
   imports: [
     CommonModule,
     MatToolbarModule, MatButtonModule, MatIconModule, MatMenuModule,
-    MatTooltipModule, MatChipsModule, MatBadgeModule, MatSnackBarModule,
+    MatTooltipModule, MatChipsModule, MatSnackBarModule,
     MatProgressSpinnerModule, MatDialogModule, MatDividerModule,
-    ChatPanelComponent, PresenceBarComponent,
+    CommentsPanelComponent, PresenceBarComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -137,20 +136,19 @@ declare global {
           <input #docxFileInput type="file" accept=".docx" hidden (change)="onDocxUpload($event)" />
         }
 
-        <!-- Chat toggle -->
+        <!-- Comments toggle -->
         <button mat-icon-button
-          [color]="chatOpen() ? 'accent' : ''"
-          matTooltip="In-document chat"
-          (click)="toggleChat()">
-          <mat-icon [matBadge]="unreadMessages()" matBadgeColor="warn"
-            [matBadgeHidden]="unreadMessages() === 0" aria-hidden="false">chat</mat-icon>
+          [color]="commentsOpen() ? 'accent' : ''"
+          matTooltip="Comments"
+          (click)="toggleComments()">
+          <mat-icon>comment</mat-icon>
         </button>
       </mat-toolbar>
 
-      <!-- Editor + Chat layout -->
+      <!-- Editor + Comments layout -->
       <div class="editor-content-row">
         <!-- SuperDoc mount point -->
-        <div class="editor-container" [class.chat-open]="chatOpen()">
+        <div class="editor-container" [class.chat-open]="commentsOpen()">
           <!-- SuperDoc toolbar renders here -->
           <div #sdToolbar id="superdoc-toolbar" class="superdoc-toolbar-mount"></div>
           @if (loading()) {
@@ -162,13 +160,12 @@ declare global {
           <div #editorContainer id="superdoc-editor" class="superdoc-mount"></div>
         </div>
 
-        <!-- Chat panel -->
-        @if (chatOpen()) {
-          <app-chat-panel
+        <!-- Comments panel -->
+        @if (commentsOpen()) {
+          <app-comments-panel
             [policyId]="policyId"
-            [currentUser]="currentUser()!"
-            class="chat-sidebar"
-            (unreadCount)="unreadMessages.set($event)" />
+            [versionId]="versionId"
+            class="chat-sidebar" />
         }
       </div>
     </div>
@@ -220,9 +217,8 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
   // Signals
   loading = signal(true);
   trackChangesEnabled = signal(false);
-  chatOpen = signal(false);
+  commentsOpen = signal(true);
   activeUsers = signal<User[]>([]);
-  unreadMessages = signal(0);
   currentUser = signal<User | null>(null);
   autoSaveState = signal<'saved' | 'pending' | 'saving' | 'error'>('saved');
 
@@ -588,9 +584,8 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
     }
   }
 
-  toggleChat(): void {
-    this.chatOpen.set(!this.chatOpen());
-    if (this.chatOpen()) this.unreadMessages.set(0);
+  toggleComments(): void {
+    this.commentsOpen.set(!this.commentsOpen());
   }
 
   // --- Role helpers ---
