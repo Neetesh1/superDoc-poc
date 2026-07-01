@@ -39,8 +39,22 @@ import { PolicyVersion, AuditLogEntry } from '../../core/models/policy.models';
                   <th mat-header-cell *matHeaderCellDef>Summary</th>
                   <td mat-cell *matCellDef="let v">{{ v.changeSummary ?? '—' }}</td>
                 </ng-container>
+                <ng-container matColumnDef="contributors">
+                  <th mat-header-cell *matHeaderCellDef>Contributors</th>
+                  <td mat-cell *matCellDef="let v">
+                    @if (v.contributorsJson?.length) {
+                      <span class="contributors">
+                        @for (c of v.contributorsJson; track c.id) {
+                          <span class="contributor-chip" [title]="c.role">{{ c.name }}</span>
+                        }
+                      </span>
+                    } @else {
+                      <span class="contributor-chip">{{ v.creator?.name ?? '—' }}</span>
+                    }
+                  </td>
+                </ng-container>
                 <ng-container matColumnDef="createdAt">
-                  <th mat-header-cell *matHeaderCellDef>Created</th>
+                  <th mat-header-cell *matHeaderCellDef>Saved At</th>
                   <td mat-cell *matCellDef="let v">{{ v.createdAt | date:'medium' }}</td>
                 </ng-container>
                 <ng-container matColumnDef="actions">
@@ -49,8 +63,8 @@ import { PolicyVersion, AuditLogEntry } from '../../core/models/policy.models';
                     <button mat-icon-button (click)="downloadDocx(v)"><mat-icon>download</mat-icon></button>
                   </td>
                 </ng-container>
-                <tr mat-header-row *matHeaderRowDef="['versionNo','changeSummary','createdAt','actions']"></tr>
-                <tr mat-row *matRowDef="let row; columns: ['versionNo','changeSummary','createdAt','actions'];"></tr>
+                <tr mat-header-row *matHeaderRowDef="['versionNo','changeSummary','contributors','createdAt','actions']"></tr>
+                <tr mat-row *matRowDef="let row; columns: ['versionNo','changeSummary','contributors','createdAt','actions'];"></tr>
               </table>
             }
           </mat-card-content>
@@ -80,7 +94,7 @@ import { PolicyVersion, AuditLogEntry } from '../../core/models/policy.models';
       </div>
     </div>
   `,
-  styles: [`.page-shell { display: flex; flex-direction: column; min-height: 100vh; } .page-content { padding: 24px; display: flex; flex-direction: column; gap: 20px; } .full-width { width: 100%; }`],
+  styles: [`.page-shell { display: flex; flex-direction: column; min-height: 100vh; } .page-content { padding: 24px; display: flex; flex-direction: column; gap: 20px; } .full-width { width: 100%; } .contributors { display: flex; flex-wrap: wrap; gap: 4px; } .contributor-chip { background: #e3f2fd; color: #1565c0; border-radius: 12px; padding: 2px 8px; font-size: 12px; white-space: nowrap; }`],
 })
 export class VersionHistoryComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);

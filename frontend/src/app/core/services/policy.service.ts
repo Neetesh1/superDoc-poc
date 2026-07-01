@@ -33,17 +33,19 @@ export class PolicyService {
     return this.http.get(`${this.base}/${policyId}/versions/${versionId}/docx`, { responseType: 'blob' });
   }
 
-  uploadDocx(policyId: string, file: File, summary = ''): Observable<PolicyVersion> {
+  uploadDocx(policyId: string, file: File, summary = '', contributors: Array<{id:string;name:string;role:string}> = []): Observable<PolicyVersion> {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('summary', summary);
+    if (contributors.length) fd.append('contributors', JSON.stringify(contributors));
     return this.http.post<PolicyVersion>(`${this.base}/${policyId}/versions/upload`, fd);
   }
 
-  saveCurrentDocx(policyId: string, file: File, versionId = ''): Observable<PolicyVersion> {
+  saveCurrentDocx(policyId: string, file: File, versionId = '', contributors: Array<{id:string;name:string;role:string}> = []): Observable<PolicyVersion> {
     const fd = new FormData();
     fd.append('file', file);
     if (versionId) fd.append('versionId', versionId);
+    if (contributors.length) fd.append('contributors', JSON.stringify(contributors));
     return this.http.post<PolicyVersion>(`${this.base}/${policyId}/versions/current/docx`, fd);
   }
 

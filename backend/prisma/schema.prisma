@@ -74,6 +74,7 @@ model PolicyVersion {
   docxPath      String?
   yjsState      Bytes?
   changeSummary String?
+  contributorsJson Json?   // [{id, name, role}] of users who edited during this save
   createdBy     String
   createdAt     DateTime @default(now())
 

@@ -523,11 +523,12 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
   async downloadDocx(): Promise<void> {
     if (!this.superdoc) return;
     try {
-      await this.superdoc.export?.({
-        exportType: ['docx'],
-        exportedName: 'SuperDoc',
-        triggerDownload: true,
-      });
+      const blob = await this.exportDocxBlob();
+      this.triggerDownload(
+        blob,
+        'SuperDoc.docx',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      );
     } catch {
       this.snackBar.open('Export failed', 'Dismiss', { duration: 3000 });
     }
@@ -704,7 +705,8 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
       const file = new File([blob], `policy-${this.policyId}-autosave.docx`, {
         type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       });
-      const version = await this.policyService.saveCurrentDocx(this.policyId, file, this.versionId).toPromise();
+      const contributors = this.activeUsers().map(u => ({ id: u.id, name: u.name, role: u.role }));
+      const version = await this.policyService.saveCurrentDocx(this.policyId, file, this.versionId, contributors).toPromise();
       if (version?.id) {
         this.versionId = version.id;
         this.versionCreated.emit(version);
@@ -775,6 +777,6 @@ export class SuperdocEditorComponent implements OnInit, OnDestroy {
     a.href = url;
     a.download = filename;
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 }

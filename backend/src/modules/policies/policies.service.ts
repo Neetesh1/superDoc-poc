@@ -79,7 +79,7 @@ export class PoliciesService {
     });
   }
 
-  async uploadDocx(policyId: string, file: Express.Multer.File, userId: string, summary = '') {
+  async uploadDocx(policyId: string, file: Express.Multer.File, userId: string, summary = '', contributors: any[] = []) {
     await this.findOne(policyId, userId);
     const lastVersion = await this.prisma.policyVersion.findFirst({
       where: { policyId },
@@ -87,16 +87,16 @@ export class PoliciesService {
     });
     const versionNo = (lastVersion?.versionNo ?? 0) + 1;
     const version = await this.prisma.policyVersion.create({
-      data: { policyId, versionNo, docxPath: file.path, changeSummary: summary || undefined, createdBy: userId },
+      data: { policyId, versionNo, docxPath: file.path, changeSummary: summary || undefined, createdBy: userId, contributorsJson: contributors.length ? contributors : undefined },
     });
     await this.prisma.policy.update({ where: { id: policyId }, data: { currentVersionId: version.id } });
     await this.prisma.auditLog.create({
-      data: { policyId, userId, action: 'version.uploaded', metadataJson: { versionNo, file: file.originalname, summary } },
+      data: { policyId, userId, action: 'version.uploaded', metadataJson: { versionNo, file: file.originalname, summary, contributors } },
     });
     return version;
   }
 
-  async saveCurrentDocx(policyId: string, file: Express.Multer.File, userId: string, versionId?: string) {
+  async saveCurrentDocx(policyId: string, file: Express.Multer.File, userId: string, versionId?: string, contributors: any[] = []) {
     const policy = await this.findOne(policyId, userId);
     const targetVersionId = versionId || policy.currentVersionId;
 
@@ -106,21 +106,21 @@ export class PoliciesService {
 
       const version = await this.prisma.policyVersion.update({
         where: { id: targetVersionId },
-        data: { docxPath: file.path },
+        data: { docxPath: file.path, contributorsJson: contributors.length ? contributors : undefined },
       });
       await this.prisma.policy.update({ where: { id: policyId }, data: { currentVersionId: version.id } });
       await this.prisma.auditLog.create({
-        data: { policyId, userId, action: 'version.autosaved', metadataJson: { versionId: version.id, file: file.originalname } },
+        data: { policyId, userId, action: 'version.autosaved', metadataJson: { versionId: version.id, file: file.originalname, contributors } },
       });
       return version;
     }
 
     const version = await this.prisma.policyVersion.create({
-      data: { policyId, versionNo: 1, docxPath: file.path, changeSummary: 'Autosaved draft', createdBy: userId },
+      data: { policyId, versionNo: 1, docxPath: file.path, changeSummary: 'Autosaved draft', createdBy: userId, contributorsJson: contributors.length ? contributors : undefined },
     });
     await this.prisma.policy.update({ where: { id: policyId }, data: { currentVersionId: version.id } });
     await this.prisma.auditLog.create({
-      data: { policyId, userId, action: 'version.autosaved', metadataJson: { versionId: version.id, file: file.originalname } },
+      data: { policyId, userId, action: 'version.autosaved', metadataJson: { versionId: version.id, file: file.originalname, contributors } },
     });
     return version;
   }

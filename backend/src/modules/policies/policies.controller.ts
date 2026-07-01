@@ -49,15 +49,17 @@ export class PoliciesController {
   @Post(':id/versions/upload')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
-  uploadDocx(@Param('id') id: string, @UploadedFile() file: Express.Multer.File, @Body('summary') summary: string, @Request() req: any) {
-    return this.policies.uploadDocx(id, file, req.user.id, summary ?? '');
+  uploadDocx(@Param('id') id: string, @UploadedFile() file: Express.Multer.File, @Body('summary') summary: string, @Body('contributors') contributors: string, @Request() req: any) {
+    const parsedContributors = contributors ? JSON.parse(contributors) : [];
+    return this.policies.uploadDocx(id, file, req.user.id, summary ?? '', parsedContributors);
   }
 
   @Post(':id/versions/current/docx')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
-  saveCurrentDocx(@Param('id') id: string, @UploadedFile() file: Express.Multer.File, @Body('versionId') versionId: string, @Request() req: any) {
-    return this.policies.saveCurrentDocx(id, file, req.user.id, versionId || undefined);
+  saveCurrentDocx(@Param('id') id: string, @UploadedFile() file: Express.Multer.File, @Body('versionId') versionId: string, @Body('contributors') contributors: string, @Request() req: any) {
+    const parsedContributors = contributors ? JSON.parse(contributors) : [];
+    return this.policies.saveCurrentDocx(id, file, req.user.id, versionId || undefined, parsedContributors);
   }
 
   @Get(':id/versions/:versionId/docx')

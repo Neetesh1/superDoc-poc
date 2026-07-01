@@ -34,6 +34,8 @@ export interface PolicyVersion {
   changeSummary?: string;
   createdBy: string;
   createdAt: string;
+  creator?: { id: string; name: string };
+  contributorsJson?: Array<{ id: string; name: string; role: string }>;
 }
 
 export interface PolicyPermission {
