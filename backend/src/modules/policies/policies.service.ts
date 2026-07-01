@@ -3,7 +3,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { join, resolve } from 'path';
-import { createReadStream, existsSync, copyFileSync, mkdirSync } from 'fs';
+import { createReadStream, existsSync, copyFileSync, mkdirSync, statSync } from 'fs';
 import axios from 'axios';
 import * as FormData from 'form-data';
 import * as mammoth from 'mammoth';
@@ -105,7 +105,7 @@ export class PoliciesService {
     if (targetVersionId) {
       const existing = await this.prisma.policyVersion.findUnique({ where: { id: targetVersionId } });
       if (!existing || existing.policyId !== policyId) throw new NotFoundException('Policy version not found');
-      const changeSummary = await this.buildChangeSummary(existing.docxPath, file.path);
+      const changeSummary = this.buildChangeSummary(existing.docxPath, file.size);
 
       const version = await this.prisma.policyVersion.update({
         where: { id: targetVersionId },
@@ -359,33 +359,21 @@ export class PoliciesService {
     return comment;
   }
 
-  private async buildChangeSummary(previousPath?: string | null, nextPath?: string | null): Promise<{
-    changedWords?: { added: number; removed: number };
-  }> {
-    if (
-      !previousPath
-      || !nextPath
-      || !this.isAllowedUploadPath(previousPath)
-      || !this.isAllowedUploadPath(nextPath)
-      || !existsSync(previousPath)
-      || !existsSync(nextPath)
-    ) {
+  private buildChangeSummary(previousPath?: string | null, nextSizeBytes = 0): {
+    contentDelta?: { previousSizeBytes: number; nextSizeBytes: number; deltaBytes: number };
+  } {
+    if (!previousPath || !this.isAllowedUploadPath(previousPath) || !existsSync(previousPath)) {
       return {};
     }
     try {
-      const [previous, next] = await Promise.all([
-        mammoth.extractRawText({ path: previousPath }),
-        mammoth.extractRawText({ path: nextPath }),
-      ]);
-      const parts = diffWords(previous.value, next.value);
-      let addedWords = 0;
-      let removedWords = 0;
-      for (const part of parts) {
-        const words = (part.value.match(/\S+/g) ?? []).length;
-        if (part.added) addedWords += words;
-        if (part.removed) removedWords += words;
-      }
-      return { changedWords: { added: addedWords, removed: removedWords } };
+      const previousSizeBytes = statSync(previousPath).size;
+      return {
+        contentDelta: {
+          previousSizeBytes,
+          nextSizeBytes,
+          deltaBytes: nextSizeBytes - previousSizeBytes,
+        },
+      };
     } catch {
       return {};
     }
