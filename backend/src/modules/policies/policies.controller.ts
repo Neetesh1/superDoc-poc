@@ -107,4 +107,18 @@ export class PoliciesController {
   getAuditLog(@Param('id') id: string, @Request() req: any) {
     return this.policies.getAuditLog(id, req.user.id);
   }
+
+  @Get(':id/comments')
+  listComments(@Param('id') id: string, @Request() req: any) {
+    return this.policies.listComments(id, req.user.id);
+  }
+
+  @Post(':id/comments')
+  createComment(
+    @Param('id') id: string,
+    @Body() body: { body: string; versionId?: string; parentCommentId?: string; anchorJson?: unknown },
+    @Request() req: any,
+  ) {
+    return this.policies.createComment(id, req.user.id, body);
+  }
 }
